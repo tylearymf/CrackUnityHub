@@ -1,0 +1,4 @@
+[submodule "asar.net"]
+	path = asar.net
+	url = git@github.com:tylearymf/asar.net.git
+	branch = master
