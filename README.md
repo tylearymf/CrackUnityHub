@@ -11,7 +11,8 @@
 ### 操作方法
 
 ```
-下载 UnityHub2.4.1.0/app.7z，解压得到 app.asar 文件，然后替换掉 "Your UnityHub Folder/resources/app.asar" 文件即可。
+1、下载 Release 中的 工具压缩包，解压得到 CrackHub.exe 文件，然后 双击执行exe 即可。
+2、自己手动修改，请搭建 Node.js 和 asar 环境，然后按照下面的修改逻辑修改即可。
 ```
 
 
