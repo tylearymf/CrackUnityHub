@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -7,53 +8,35 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using asardotnetasync;
 
-namespace Project
+namespace CrackUnityHub
 {
     class Program
     {
         static ProgressBar progressBar;
-        static string getLicenseInfoBody = @"licenseInfo.activated = true;
-        licenseInfo.flow = licenseCore.licenseKinds.PRO;
-        licenseInfo.label = licenseCore.licenseKinds.PRO;
-        licenseInfo.offlineDisabled = false;
-        licenseInfo.transactionId = licenseCore.getTransactionId();
-        licenseInfo.startDate = new Date('1993-01-01T08:00:00.000Z');
-        licenseInfo.stopDate = licenseCore.getInfinityDate();
-        licenseInfo.displayedStopDate = false;
-        licenseInfo.canExpire = false;
-        const licenseInfoString = JSON.stringify(licenseInfo);
-        if (callback !== undefined) {
-            callback(undefined, licenseInfoString);
-        }
-        return Promise.resolve(licenseInfoString);";
-        static string getDefaultUserInfoBody = @"return {
-            accessToken: '',
-            displayName: 'anonymous',
-            organizationForeignKeys: '',
-            primaryOrg: '',
-            userId: 'anonymous',
-            name: 'anonymous',
-            valid: false,
-            whitelisted: true
-        };";
-
 
         static async Task Main(string[] args)
         {
+            var processes = Process.GetProcessesByName("Unity Hub");
+            if (processes.Length > 0)
+            {
+                LogAndPause("请结束Unity Hub后再试试.");
+                return;
+            }
+
             Console.WriteLine($"请输入UnityHub目录的绝对路径：");
             var unityHubPath = Console.ReadLine();
             unityHubPath = unityHubPath.Trim('"');
 
-            var isUnityHub = false;
+            var unityHubVersion = string.Empty;
             try
             {
-                isUnityHub = File.Exists(Path.Combine(unityHubPath, "Unity Hub.exe"));
+                var version = FileVersionInfo.GetVersionInfo(Path.Combine(unityHubPath, "Unity Hub.exe"));
+                unityHubVersion = version.ProductVersion;
             }
             catch
-            {
-            }
+            { }
 
-            if (!isUnityHub)
+            if (string.IsNullOrEmpty(unityHubVersion))
             {
                 LogAndPause($"不是 UnityHub 目录.");
                 return;
@@ -66,7 +49,14 @@ namespace Project
 
             if (Directory.Exists(exportFolder) || !File.Exists(asarPath))
             {
-                LogAndPause($"已经破解或破解失败.");
+                Console.WriteLine("UnityHub已经被破解了.是否要去除破解？(y/n)");
+                var input = Console.ReadLine().Trim();
+                if (string.Compare(input, "y", true) == 0)
+                {
+                    Directory.Delete(exportFolder, true);
+                    File.Move(asarPath + ".bak", asarPath);
+                    LogAndPause("去除破解完成.");
+                }
                 return;
             }
 
@@ -84,29 +74,26 @@ namespace Project
                 extractor.FileExtracted += (sender, e) => progressBar.Report(e.Progress);
                 await extractor.ExtractAll(archive, exportFolder + "/");
 
-                var licenseClientPath = Path.Combine(exportFolder, "build/services/licenseService/licenseClient.js");
-                var authPath = Path.Combine(exportFolder, "build/services/localAuth/auth.js");
+                var patcher = PatcherManager.GetPatcher(unityHubVersion);
+                success = patcher?.Patch(exportFolder) ?? false;
 
-                var licenseClientContent = File.ReadAllText(licenseClientPath);
-                var authContent = File.ReadAllText(authPath);
-
-                ReplaceMehthodBody(ref licenseClientContent, getLicenseInfoBody, @"getLicenseInfo\(\w+\)\s*{(?<body>.*?return.*?)}");
-                ReplaceMehthodBody(ref authContent, getDefaultUserInfoBody, @"getDefaultUserInfo\(\)\s*{(?<body>.*?return.*?};.*?)}");
-
-                File.WriteAllText(licenseClientPath, licenseClientContent);
-                File.WriteAllText(authPath, authContent);
-
-                if (Directory.Exists(asarUnpackPath))
+                if (success)
                 {
-                    CopyDirectory(asarUnpackPath, exportFolder, true);
-                }
+                    if (Directory.Exists(asarUnpackPath))
+                        CopyDirectory(asarUnpackPath, exportFolder, true);
 
-                File.Move(asarPath, asarPath + ".bak");
+                    File.Move(asarPath, asarPath + ".bak");
+                }
+                else
+                {
+                    throw new Exception($"当前版本不能破解. ver: {unityHubVersion}");
+                }
             }
             catch (Exception ex)
             {
                 success = false;
                 Console.WriteLine(ex);
+                Directory.Delete(exportFolder, true);
             }
             finally
             {
@@ -114,14 +101,6 @@ namespace Project
                 progressBar.Dispose();
                 LogAndPause(success ? "破解完成" : "破解失败");
             }
-        }
-
-        static void ReplaceMehthodBody(ref string scriptContent, string body, string regex)
-        {
-            scriptContent = Regex.Replace(scriptContent, regex, evaluator =>
-            {
-                return evaluator.Value.Replace(evaluator.Groups["body"].Value, "\n" + body + "\n");
-            }, RegexOptions.Singleline);
         }
 
         static void LogAndPause(string msg)
